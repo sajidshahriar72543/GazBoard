@@ -19,6 +19,10 @@ const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
 const Vault = require('./vault'); // Integrate vault
+const {
+  encryptBoard,
+  decryptBoard
+} = require('./board-crypto');
 
 const SRC = path.join(__dirname, 'src');
 const isDev = process.argv.includes('--dev');
@@ -109,6 +113,34 @@ async function loadVaultKey() {
 
     return null;
   }
+}
+
+async function readBoard(id) {
+  const file = path.join(dataDir(), id + '.json');
+
+  const raw = await fsp.readFile(file, 'utf8');
+  const parsed = JSON.parse(raw);
+
+  // Encrypted board
+  if (
+    parsed &&
+    parsed.version === 1 &&
+    parsed.algorithm === 'aes-256-gcm' &&
+    typeof parsed.iv === 'string' &&
+    typeof parsed.tag === 'string' &&
+    typeof parsed.data === 'string'
+  ) {
+    if (!vault.isUnlocked()) {
+      throw new Error('Vault is locked');
+    }
+
+    return JSON.parse(
+      decryptBoard(parsed, vault.getKey())
+    );
+  }
+
+  // Legacy plaintext board
+  return parsed;
 }
 
 // Which board was open last. This used to live in the renderer's localStorage,
@@ -659,35 +691,68 @@ function ipc() {
   /* --- board persistence --- */
   ipcMain.handle('boards:list', async () => {
     await ensureDataDir();
-    const files = (await fsp.readdir(dataDir())).filter((f) => f.endsWith('.json'));
+
+    const files = (await fsp.readdir(dataDir()))
+      .filter((f) => f.endsWith('.json'));
+
     const out = [];
+
     for (const f of files) {
       try {
+        const id = path.basename(f, '.json');
         const st = await fsp.stat(path.join(dataDir(), f));
-        const raw = JSON.parse(await fsp.readFile(path.join(dataDir(), f), 'utf8'));
-        out.push({ id: raw.id || path.basename(f, '.json'), name: raw.name || 'Untitled board', modified: st.mtimeMs, objects: (raw.objects || []).length, thumb: raw.thumb || null });
-      } catch {}
+        const raw = await readBoard(id);
+
+        out.push({
+          id: raw.id || id,
+          name: raw.name || 'Untitled board',
+          modified: st.mtimeMs,
+          objects: (raw.objects || []).length,
+          thumb: raw.thumb || null
+        });
+      } catch (error) {
+        console.warn(
+          `[boards] Could not index ${f}:`,
+          error.message
+        );
+      }
     }
+
     return out.sort((a, b) => b.modified - a.modified);
   });
+  
   ipcMain.handle('boards:load', async (_e, id) => {
     await ensureDataDir();
-    try { return JSON.parse(await fsp.readFile(path.join(dataDir(), id + '.json'), 'utf8')); } catch { return null; }
+
+    try {
+      return await readBoard(id);
+    } catch (error) {
+      console.warn('[boards] Could not load board:', error.message);
+      return null;
+    }
   });
+
   ipcMain.handle('boards:save', async (_e, payload) => {
     await ensureDataDir();
-    // The renderer sends { id, json }. An older shape - the board object itself -
-    // is still accepted so nothing breaks if the two sides are ever out of step.
+
+    if (!vault.isUnlocked()) {
+      throw new Error('Vault is locked');
+    }
+
     const board = (payload && typeof payload.json === 'string')
       ? { id: payload.id, json: payload.json }
       : { id: payload.id, json: JSON.stringify(payload) };
-    // the board and the "last open" pointer are two separate files; there is no
-    // ordering between them, so they go out together rather than one after the
-    // other
+
+    const encrypted = encryptBoard(board.json, vault.getKey());
+
     await Promise.all([
-      writeAtomic(path.join(dataDir(), board.id + '.json'), board.json),
+      writeAtomic(
+        path.join(dataDir(), board.id + '.json'),
+        encrypted
+      ),
       setLastBoard(board.id)
     ]);
+
     return true;
   });
   /**
@@ -743,7 +808,15 @@ function ipc() {
   ipcMain.handle('boards:resume', async () => {
     await ensureDataDir();
     const read = async (id) => {
-      try { return JSON.parse(await fsp.readFile(path.join(dataDir(), id + '.json'), 'utf8')); } catch { return null; }
+      try {
+        return await readBoard(id);
+      } catch (error) {
+        console.warn(
+          `[boards] Could not resume ${id}:`,
+          error.message
+        );
+        return null;
+      }
     };
     const wanted = await getLastBoard();
     if (wanted) {
@@ -770,6 +843,7 @@ function ipc() {
     }
     return { board: null, reason: 'none' };
   });
+  
   ipcMain.handle('boards:delete', async (_e, id) => {
     let ok = false;
     try { await fsp.unlink(path.join(dataDir(), id + '.json')); ok = true; } catch { ok = false; }
