@@ -2,16 +2,57 @@
 
 const crypto = require('node:crypto');
 
-// Generate a random 256-bit encryption key
-function generateKey() {
-  return crypto.randomBytes(32);
+// Characters that are easy to distinguish when writing/reading the key.
+// We deliberately exclude 0, O, 1, and I.
+const KEY_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+/**
+ * Generate a cryptographically random Vault Key.
+ *
+ * Example:
+ * GZB-7K4P-29XM-Q8FD-3R7N
+ */
+function generateVaultKey() {
+  const groups = [];
+
+  for (let group = 0; group < 5; group++) {
+    let value = '';
+
+    for (let i = 0; i < 4; i++) {
+      const index = crypto.randomInt(0, KEY_ALPHABET.length);
+      value += KEY_ALPHABET[index];
+    }
+
+    groups.push(value);
+  }
+
+  return 'GZB-' + groups.join('-');
 }
 
-// Encrypt text using AES-256-GCM
+/**
+ * Convert a Vault Key into a cryptographic key.
+ *
+ * We don't use the Vault Key directly as the AES key.
+ * Instead, we derive a 256-bit key from it.
+ */
+function deriveKey(vaultKey) {
+  return crypto
+    .createHash('sha256')
+    .update(vaultKey, 'utf8')
+    .digest();
+}
+
+/**
+ * Encrypt text using AES-256-GCM.
+ */
 function encrypt(text, key) {
   const iv = crypto.randomBytes(12);
 
-  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const cipher = crypto.createCipheriv(
+    'aes-256-gcm',
+    key,
+    iv
+  );
 
   const encrypted = Buffer.concat([
     cipher.update(text, 'utf8'),
@@ -27,9 +68,15 @@ function encrypt(text, key) {
   };
 }
 
-// Decrypt text using AES-256-GCM
+/**
+ * Decrypt text using AES-256-GCM.
+ */
 function decrypt(encrypted, key, iv, authTag) {
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  const decipher = crypto.createDecipheriv(
+    'aes-256-gcm',
+    key,
+    iv
+  );
 
   decipher.setAuthTag(authTag);
 
@@ -42,7 +89,8 @@ function decrypt(encrypted, key, iv, authTag) {
 }
 
 module.exports = {
-  generateKey,
+  generateVaultKey,
+  deriveKey,
   encrypt,
   decrypt
 };
