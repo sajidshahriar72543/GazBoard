@@ -7,6 +7,7 @@ const os = require('node:os');
 const { spawn } = require('node:child_process');
 const { pathToFileURL } = require('node:url');
 const crypto = require('node:crypto');
+const Vault = require('./vault'); // Integrate vault
 
 const SRC = path.join(__dirname, 'src');
 const isDev = process.argv.includes('--dev');
@@ -54,6 +55,8 @@ function registerProtocol() {
 /* ------------------------------------------------------------------ *
  *  Board storage (local only - no accounts, no cloud)
  * ------------------------------------------------------------------ */
+const vault = new Vault(); // creating vault instance
+
 const dataDir = () => path.join(app.getPath('userData'), 'boards');
 async function ensureDataDir() { await fsp.mkdir(dataDir(), { recursive: true }); }
 
@@ -481,6 +484,25 @@ function printHtmlToPdf(html, { widthIn, heightIn, landscape = false }) {
  *  IPC
  * ------------------------------------------------------------------ */
 function ipc() {
+  ipcMain.handle('vault:create', () => {
+    return vault.create();
+  });
+
+  ipcMain.handle('vault:unlock', (_e, vaultKey) => {
+    return vault.unlock(vaultKey);
+  });
+
+  ipcMain.handle('vault:lock', () => {
+    vault.lock();
+    return true;
+  });
+
+  ipcMain.handle('vault:status', () => {
+    return {
+      unlocked: vault.isUnlocked()
+    };
+  });
+
   ipcMain.handle('app:info', () => ({
     version: app.getVersion(), platform: process.platform,
     electron: process.versions.electron, chrome: process.versions.chrome,
