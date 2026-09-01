@@ -39,6 +39,13 @@ contextBridge.exposeInMainWorld('board', {
     status: () => ipcRenderer.invoke('vault:status'),
   },
 
+  // Sync
+  sync: {
+    upload: (id) => ipcRenderer.invoke('sync:upload', id),
+
+    download: (id) => ipcRenderer.invoke('sync:download', id)
+  },
+
   importToPdf: (filePath) => ipcRenderer.invoke('import:toPdf', filePath),
   exportPdf: (payload) => ipcRenderer.invoke('export:pdf', payload),
 

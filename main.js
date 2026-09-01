@@ -24,6 +24,11 @@ const {
   decryptBoard
 } = require('./board-crypto');
 
+const {
+  uploadBoard,
+  downloadBoard
+} = require('./sync-client');
+
 const SRC = path.join(__dirname, 'src');
 const isDev = process.argv.includes('--dev');
 
@@ -727,8 +732,8 @@ function ipc() {
     try {
       return await readBoard(id);
     } catch (error) {
-      console.warn('[boards] Could not load board:', error.message);
-      return null;
+        console.error('[boards] Could not load board:', error);
+        throw error;
     }
   });
 
@@ -755,6 +760,50 @@ function ipc() {
 
     return true;
   });
+
+  ipcMain.handle('sync:upload', async (_e, id) => {
+    await ensureDataDir();
+
+    const file = path.join(dataDir(), id + '.json');
+
+    const encryptedBoard = await fsp.readFile(
+      file,
+      'utf8'
+    );
+
+    return await uploadBoard(
+      id,
+      encryptedBoard
+    );
+  });
+
+  ipcMain.handle('sync:download', async (_e, id) => {
+    await ensureDataDir();
+
+    const encryptedBoard = await downloadBoard(id);
+
+    // Validate that the server returned an encrypted board.
+    const parsed = JSON.parse(encryptedBoard);
+
+    if (
+      !parsed ||
+      parsed.version !== 1 ||
+      parsed.algorithm !== 'aes-256-gcm' ||
+      typeof parsed.iv !== 'string' ||
+      typeof parsed.tag !== 'string' ||
+      typeof parsed.data !== 'string'
+    ) {
+      throw new Error('Server returned invalid board data');
+    }
+
+    await writeAtomic(
+      path.join(dataDir(), id + '.json'),
+      encryptedBoard
+    );
+
+    return true;
+  });
+
   /**
    * Store one picture and return the name the board should remember. Returns
    * null if it cannot - the caller then keeps the picture inline, exactly as
