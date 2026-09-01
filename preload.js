@@ -34,8 +34,9 @@ contextBridge.exposeInMainWorld('board', {
   vault: {
     create: () => ipcRenderer.invoke('vault:create'),
     unlock: (vaultKey) => ipcRenderer.invoke('vault:unlock', vaultKey),
+    load: () => ipcRenderer.invoke('vault:load'),
     lock: () => ipcRenderer.invoke('vault:lock'),
-    status: () => ipcRenderer.invoke('vault:status')
+    status: () => ipcRenderer.invoke('vault:status'),
   },
 
   importToPdf: (filePath) => ipcRenderer.invoke('import:toPdf', filePath),

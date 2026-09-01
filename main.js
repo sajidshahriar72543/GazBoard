@@ -1,5 +1,16 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, protocol, net, shell, Menu, screen } = require('electron');
+const {
+      app,
+      BrowserWindow,
+      ipcMain,
+      dialog,
+      protocol,
+      net,
+      shell,
+      Menu,
+      screen,
+      safeStorage
+    } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
@@ -56,9 +67,49 @@ function registerProtocol() {
  *  Board storage (local only - no accounts, no cloud)
  * ------------------------------------------------------------------ */
 const vault = new Vault(); // creating vault instance
-
+const vaultKeyFile = () => path.join(app.getPath('userData'), 'vault-key.dat');
 const dataDir = () => path.join(app.getPath('userData'), 'boards');
 async function ensureDataDir() { await fsp.mkdir(dataDir(), { recursive: true }); }
+async function loadVaultKey() {
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) {
+    return null;
+  }
+
+  try {
+    const encoded = (await fsp.readFile(vaultKeyFile(), 'utf8')).trim();
+
+    if (!encoded) {
+      return null;
+    }
+
+    const encrypted = Buffer.from(encoded, 'base64');
+
+    if (!encrypted.length) {
+      return null;
+    }
+
+    const decrypted = await safeStorage.decryptStringAsync(encrypted);
+
+    // Diagnostic codes
+    // console.log('[vault] decrypted type:', typeof decrypted);
+    // console.log('[vault] result type:', typeof decrypted?.result);
+    // console.log('[vault] result constructor:', decrypted?.result?.constructor?.name);
+    // console.log('[vault] result is Buffer:', Buffer.isBuffer(decrypted?.result));
+    
+    if (!decrypted || typeof decrypted.result !== 'string') {
+      return null;
+    }
+
+    return decrypted.result.trim();
+  } catch (error) {
+    console.warn(
+      '[vault] Could not load saved Vault Key:',
+      error.message
+    );
+
+    return null;
+  }
+}
 
 // Which board was open last. This used to live in the renderer's localStorage,
 // which Chromium flushes to disk lazily - so a machine that was restarted rather
@@ -484,12 +535,44 @@ function printHtmlToPdf(html, { widthIn, heightIn, landscape = false }) {
  *  IPC
  * ------------------------------------------------------------------ */
 function ipc() {
-  ipcMain.handle('vault:create', () => {
-    return vault.create();
+  ipcMain.handle('vault:create', async () => {
+    const vaultKey = vault.create();
+
+    await saveVaultKey(vaultKey);
+
+    return vaultKey;
   });
 
-  ipcMain.handle('vault:unlock', (_e, vaultKey) => {
-    return vault.unlock(vaultKey);
+  ipcMain.handle('vault:unlock', async (_e, vaultKey) => {
+    const result = vault.unlock(vaultKey);
+
+    await saveVaultKey(vaultKey);
+
+    return result;
+  });
+
+  ipcMain.handle('vault:load', async () => {
+    try {
+      const vaultKey = await loadVaultKey();
+
+      if (!vaultKey) {
+        return {
+          available: false,
+          error: 'No Vault Key could be loaded'
+        };
+      }
+
+      vault.unlock(vaultKey);
+
+      return {
+        available: true
+      };
+    } catch (error) {
+      return {
+        available: false,
+        error: error.message
+      };
+    }
   });
 
   ipcMain.handle('vault:lock', () => {
