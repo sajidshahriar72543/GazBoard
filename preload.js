@@ -37,11 +37,13 @@ contextBridge.exposeInMainWorld('board', {
     load: () => ipcRenderer.invoke('vault:load'),
     lock: () => ipcRenderer.invoke('vault:lock'),
     status: () => ipcRenderer.invoke('vault:status'),
+    // getVaultKey: () => ipcRenderer.invoke('vault:get-key'), // in case you forget the key
   },
 
   // Sync
   sync: {
     check: (id) => ipcRenderer.invoke('sync:check', id),
+    pullIfNewer: (id) => ipcRenderer.invoke('sync:pull-if-newer', id),
     upload: (id) => ipcRenderer.invoke('sync:upload', id),
     download: (id) => ipcRenderer.invoke('sync:download', id)
   },

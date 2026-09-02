@@ -123,13 +123,18 @@ const server = http.createServer(async (req, res) => {
     }
 
     // Get board sync information
+        // Download board
+        // Get board sync information
     if (
       req.method === 'GET' &&
       req.url.startsWith('/boards/') &&
       req.url.endsWith('/info')
     ) {
       const id = decodeURIComponent(
-        req.url.substring('/boards/'.length, req.url.length - '/info'.length)
+        req.url.substring(
+          '/boards/'.length,
+          req.url.length - '/info'.length
+        )
       );
 
       const file = boardFile(id);
@@ -150,6 +155,48 @@ const server = http.createServer(async (req, res) => {
           revision: syncRecord.revision,
           updatedAt: syncRecord.updatedAt
         });
+
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          sendJson(res, 404, {
+            error: 'Board not found'
+          });
+
+          return;
+        }
+
+        throw error;
+      }
+
+      return;
+    }
+
+    // Download board
+    if (
+      req.method === 'GET' &&
+      req.url.startsWith('/boards/') &&
+      !req.url.endsWith('/info')
+    ) {
+      const id = decodeURIComponent(
+        req.url.substring('/boards/'.length)
+      );
+
+      const file = boardFile(id);
+
+      try {
+        const raw = await fs.readFile(file, 'utf8');
+        const syncRecord = JSON.parse(raw);
+
+        if (
+          !syncRecord ||
+          typeof syncRecord.revision !== 'number' ||
+          typeof syncRecord.updatedAt !== 'number' ||
+          !syncRecord.encrypted
+        ) {
+          throw new Error('Invalid stored board');
+        }
+
+        sendJson(res, 200, syncRecord);
 
       } catch (error) {
         if (error.code === 'ENOENT') {

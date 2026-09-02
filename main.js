@@ -641,6 +641,15 @@ function ipc() {
     };
   });
 
+  // in case you forget the key
+  // ipcMain.handle('vault:get-key', async () => {
+  //   if (!vault.isUnlocked()) {
+  //     throw new Error('Vault is locked');
+  //   }
+
+  //   return vault.getVaultKey();
+  // });
+
   ipcMain.handle('app:info', () => ({
     version: app.getVersion(), platform: process.platform,
     electron: process.versions.electron, chrome: process.versions.chrome,
@@ -795,6 +804,65 @@ function ipc() {
       serverRevision: serverMeta.revision,
       serverUpdatedAt: serverMeta.updatedAt,
       needsDownload: serverMeta.revision > localRevision
+    };
+  });
+
+  ipcMain.handle('sync:pull-if-newer', async (_e, id) => {
+    await ensureDataDir();
+
+    const localMeta = await readSyncMeta(id);
+    const serverMeta = await getBoardInfo(id);
+
+    const localRevision =
+      localMeta && typeof localMeta.revision === 'number'
+        ? localMeta.revision
+        : 0;
+
+    if (serverMeta.revision <= localRevision) {
+      return {
+        downloaded: false,
+        localRevision,
+        serverRevision: serverMeta.revision
+      };
+    }
+
+    const record = await downloadBoard(id);
+
+    if (
+      !record ||
+      typeof record.revision !== 'number' ||
+      typeof record.updatedAt !== 'number' ||
+      !record.encrypted
+    ) {
+      throw new Error('Server returned invalid sync record');
+    }
+
+    const encryptedBoard = record.encrypted;
+
+    if (
+      encryptedBoard.version !== 1 ||
+      encryptedBoard.algorithm !== 'aes-256-gcm' ||
+      typeof encryptedBoard.iv !== 'string' ||
+      typeof encryptedBoard.tag !== 'string' ||
+      typeof encryptedBoard.data !== 'string'
+    ) {
+      throw new Error('Server returned invalid encrypted board');
+    }
+
+    await writeAtomic(
+      path.join(dataDir(), id + '.json'),
+      JSON.stringify(encryptedBoard)
+    );
+
+    await writeSyncMeta(id, {
+      revision: record.revision,
+      updatedAt: record.updatedAt
+    });
+
+    return {
+      downloaded: true,
+      localRevision,
+      serverRevision: record.revision
     };
   });
 
