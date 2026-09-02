@@ -78,7 +78,24 @@ function registerProtocol() {
 const vault = new Vault(); // creating vault instance
 const vaultKeyFile = () => path.join(app.getPath('userData'), 'vault-key.dat');
 const dataDir = () => path.join(app.getPath('userData'), 'boards');
+const syncMetaFile = (id) =>
+  path.join(dataDir(), id + '.sync.json');
 async function ensureDataDir() { await fsp.mkdir(dataDir(), { recursive: true }); }
+async function readSyncMeta(id) {
+  try {
+    const raw = await fsp.readFile(syncMetaFile(id), 'utf8');
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+async function writeSyncMeta(id, meta) {
+  await writeAtomic(
+    syncMetaFile(id),
+    JSON.stringify(meta)
+  );
+}
 async function loadVaultKey() {
   if (!(await safeStorage.isAsyncEncryptionAvailable())) {
     return null;
@@ -771,37 +788,66 @@ function ipc() {
       'utf8'
     );
 
-    return await uploadBoard(
+    const result = await uploadBoard(
       id,
       encryptedBoard
     );
+
+    if (
+      !result ||
+      typeof result.revision !== 'number'
+    ) {
+      throw new Error('Server returned invalid revision');
+    }
+
+    await writeSyncMeta(id, {
+      revision: result.revision,
+      updatedAt: Date.now()
+    });
+
+    return result;
   });
 
   ipcMain.handle('sync:download', async (_e, id) => {
     await ensureDataDir();
 
-    const encryptedBoard = await downloadBoard(id);
-
-    // Validate that the server returned an encrypted board.
-    const parsed = JSON.parse(encryptedBoard);
+    const record = await downloadBoard(id);
 
     if (
-      !parsed ||
-      parsed.version !== 1 ||
-      parsed.algorithm !== 'aes-256-gcm' ||
-      typeof parsed.iv !== 'string' ||
-      typeof parsed.tag !== 'string' ||
-      typeof parsed.data !== 'string'
+      !record ||
+      typeof record.revision !== 'number' ||
+      typeof record.updatedAt !== 'number' ||
+      !record.encrypted
     ) {
-      throw new Error('Server returned invalid board data');
+      throw new Error('Server returned invalid sync record');
+    }
+
+    const encryptedBoard = record.encrypted;
+
+    if (
+      encryptedBoard.version !== 1 ||
+      encryptedBoard.algorithm !== 'aes-256-gcm' ||
+      typeof encryptedBoard.iv !== 'string' ||
+      typeof encryptedBoard.tag !== 'string' ||
+      typeof encryptedBoard.data !== 'string'
+    ) {
+      throw new Error('Server returned invalid encrypted board');
     }
 
     await writeAtomic(
       path.join(dataDir(), id + '.json'),
-      encryptedBoard
+      JSON.stringify(encryptedBoard)
     );
 
-    return true;
+    await writeSyncMeta(id, {
+      revision: record.revision,
+      updatedAt: record.updatedAt
+    });
+
+    return {
+      revision: record.revision,
+      updatedAt: record.updatedAt
+    };
   });
 
   /**
