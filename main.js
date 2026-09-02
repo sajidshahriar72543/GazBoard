@@ -26,7 +26,8 @@ const {
 
 const {
   uploadBoard,
-  downloadBoard
+  downloadBoard,
+  getBoardInfo
 } = require('./sync-client');
 
 const SRC = path.join(__dirname, 'src');
@@ -776,6 +777,25 @@ function ipc() {
     ]);
 
     return true;
+  });
+
+  ipcMain.handle('sync:check', async (_e, id) => {
+    await ensureDataDir();
+
+    const localMeta = await readSyncMeta(id);
+    const serverMeta = await getBoardInfo(id);
+
+    const localRevision =
+      localMeta && typeof localMeta.revision === 'number'
+        ? localMeta.revision
+        : 0;
+
+    return {
+      localRevision,
+      serverRevision: serverMeta.revision,
+      serverUpdatedAt: serverMeta.updatedAt,
+      needsDownload: serverMeta.revision > localRevision
+    };
   });
 
   ipcMain.handle('sync:upload', async (_e, id) => {

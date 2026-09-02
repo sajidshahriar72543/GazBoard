@@ -122,13 +122,14 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    // Download board
+    // Get board sync information
     if (
       req.method === 'GET' &&
-      req.url.startsWith('/boards/')
+      req.url.startsWith('/boards/') &&
+      req.url.endsWith('/info')
     ) {
       const id = decodeURIComponent(
-        req.url.substring('/boards/'.length)
+        req.url.substring('/boards/'.length, req.url.length - '/info'.length)
       );
 
       const file = boardFile(id);
@@ -140,13 +141,15 @@ const server = http.createServer(async (req, res) => {
         if (
           !syncRecord ||
           typeof syncRecord.revision !== 'number' ||
-          typeof syncRecord.updatedAt !== 'number' ||
-          !syncRecord.encrypted
+          typeof syncRecord.updatedAt !== 'number'
         ) {
           throw new Error('Invalid stored board');
         }
 
-        sendJson(res, 200, syncRecord);
+        sendJson(res, 200, {
+          revision: syncRecord.revision,
+          updatedAt: syncRecord.updatedAt
+        });
 
       } catch (error) {
         if (error.code === 'ENOENT') {

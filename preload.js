@@ -41,8 +41,8 @@ contextBridge.exposeInMainWorld('board', {
 
   // Sync
   sync: {
+    check: (id) => ipcRenderer.invoke('sync:check', id),
     upload: (id) => ipcRenderer.invoke('sync:upload', id),
-
     download: (id) => ipcRenderer.invoke('sync:download', id)
   },
 
