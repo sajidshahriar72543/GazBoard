@@ -811,7 +811,27 @@ function ipc() {
     await ensureDataDir();
 
     const localMeta = await readSyncMeta(id);
-    const serverMeta = await getBoardInfo(id);
+
+    let serverMeta;
+
+    try {
+      serverMeta = await getBoardInfo(id);
+    } catch (error) {
+      // The board may exist only locally and not have been uploaded yet.
+      if (error.message === 'Board not found') {
+        return {
+          downloaded: false,
+          reason: 'not-on-server',
+          localRevision:
+            localMeta && typeof localMeta.revision === 'number'
+              ? localMeta.revision
+              : 0,
+          serverRevision: 0
+        };
+      }
+
+      throw error;
+    }
 
     const localRevision =
       localMeta && typeof localMeta.revision === 'number'

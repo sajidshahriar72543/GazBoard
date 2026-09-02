@@ -63,12 +63,26 @@ class App {
     initToolbar(this);
     this.wireGlobalEvents();
     this.wireStore();
-    this.restoreLastBoard();
+    this.startup();
     // after the board is up, never before: the first thing anyone sees should
     // be their work, not a question
     setTimeout(() => this.startUpdateFlow(), 2500);
     this.setTool('pen');
     this.syncUI();
+  }
+
+  async startup() {
+    try {
+      const vault = await window.board.vault.load();
+
+      if (!vault.available) {
+        console.warn('Vault could not be loaded:', vault.error);
+      }
+    } catch (e) {
+      console.warn('Vault startup failed:', e);
+    }
+
+    await this.restoreLastBoard();
   }
 
   /* ---------------- settings ---------------- */
@@ -291,19 +305,65 @@ class App {
   async restoreLastBoard() {
     try {
       const res = await window.board.boards.resume();
-      if (res && res.board) {
-        await this.loadBoard(res.board, { silent: true, startup: true });
-        if (res.reason === 'newest') this.toast('Reopened your most recent board');
-        return;
-      }
-    } catch (e) { console.warn('resume failed, falling back:', e); }
 
-    // last resort: the old localStorage hint, then a fresh board
-    const id = localStorage.getItem('gazboard.lastBoard') || localStorage.getItem('openboard.lastBoard');
-    if (id) {
-      const data = await window.board.boards.load(id);
-      if (data) { await this.loadBoard(data, { silent: true, startup: true }); return; }
+      if (res && res.board) {
+        let board = res.board;
+
+        // If the server has a newer version, pull it before opening.
+        try {
+          const sync = await window.board.sync.pullIfNewer(board.id);
+
+          if (sync.downloaded) {
+            board = await window.board.boards.load(board.id);
+            this.toast('Updated board from sync');
+          }
+        } catch (e) {
+          // Sync failure must never prevent opening the local board.
+          console.warn('startup sync failed:', e);
+        }
+
+        if (board) {
+          await this.loadBoard(board, { silent: true, startup: true });
+          if (res.reason === 'newest') {
+            this.toast('Reopened your most recent board');
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('resume failed, falling back:', e);
     }
+
+    // Last resort: the old localStorage hint, then a fresh board.
+    const id =
+      localStorage.getItem('gazboard.lastBoard') ||
+      localStorage.getItem('openboard.lastBoard');
+
+    if (id) {
+      try {
+        let data = await window.board.boards.load(id);
+
+        // Try sync here too, in case the fallback path is used.
+        try {
+          const sync = await window.board.sync.pullIfNewer(id);
+
+          if (sync.downloaded) {
+            data = await window.board.boards.load(id);
+            this.toast('Updated board from sync');
+          }
+        } catch (e) {
+          console.warn('fallback sync failed:', e);
+        }
+
+        if (data) {
+          await this.loadBoard(data, { silent: true, startup: true });
+          return;
+        }
+      } catch (e) {
+        console.warn('fallback board load failed:', e);
+      }
+    }
+
     this.newBoard(true);
   }
 
