@@ -36,7 +36,18 @@ async function downloadBoard(id) {
     );
   }
 
-  return await response.text();
+  const record = await response.json();
+
+  if (
+    !record ||
+    typeof record.revision !== 'number' ||
+    typeof record.updatedAt !== 'number' ||
+    !record.encrypted
+  ) {
+    throw new Error('Invalid sync record');
+  }
+
+  return record;
 }
 
 module.exports = {

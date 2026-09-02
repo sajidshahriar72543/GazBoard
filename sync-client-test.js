@@ -32,16 +32,17 @@ async function main() {
 
   console.log('\nDownloading...');
 
-  const downloaded = await downloadBoard(BOARD_ID);
+  const record = await downloadBoard(BOARD_ID);
 
+  console.log('Revision:', record.revision);
   console.log(
     'Downloaded:',
-    downloaded.length > 0
+    !!record.encrypted
   );
 
   console.log(
     'Data matches:',
-    downloaded === encryptedBoard
+    JSON.stringify(record.encrypted) === encryptedBoard
   );
 }
 

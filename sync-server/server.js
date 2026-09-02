@@ -62,31 +62,61 @@ const server = http.createServer(async (req, res) => {
       const file = boardFile(id);
       const body = await readRequestBody(req);
 
-        let board;
+      let encryptedBoard;
 
-        try {
-        board = JSON.parse(body);
-        } catch {
+      try {
+        encryptedBoard = JSON.parse(body);
+      } catch {
         throw new Error('Invalid JSON');
-        }
+      }
 
-        // Only encrypted GazBoard boards are accepted.
-        if (
-        !board ||
-        board.version !== 1 ||
-        board.algorithm !== 'aes-256-gcm' ||
-        typeof board.iv !== 'string' ||
-        typeof board.tag !== 'string' ||
-        typeof board.data !== 'string'
-        ) {
+      // Only encrypted GazBoard boards are accepted.
+      if (
+        !encryptedBoard ||
+        encryptedBoard.version !== 1 ||
+        encryptedBoard.algorithm !== 'aes-256-gcm' ||
+        typeof encryptedBoard.iv !== 'string' ||
+        typeof encryptedBoard.tag !== 'string' ||
+        typeof encryptedBoard.data !== 'string'
+      ) {
         throw new Error('Invalid encrypted board');
-        }
+      }
 
-        await fs.writeFile(file, body, 'utf8');
+      let revision = 1;
+
+      // Check whether this board already exists.
+      try {
+        const existingRaw = await fs.readFile(file, 'utf8');
+        const existing = JSON.parse(existingRaw);
+
+        if (
+          existing &&
+          typeof existing.revision === 'number'
+        ) {
+          revision = existing.revision + 1;
+        }
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      const syncRecord = {
+        revision,
+        updatedAt: Date.now(),
+        encrypted: encryptedBoard
+      };
+
+      await fs.writeFile(
+        file,
+        JSON.stringify(syncRecord),
+        'utf8'
+      );
 
       sendJson(res, 200, {
         ok: true,
-        id
+        id,
+        revision
       });
 
       return;
@@ -104,13 +134,19 @@ const server = http.createServer(async (req, res) => {
       const file = boardFile(id);
 
       try {
-        const board = await fs.readFile(file, 'utf8');
+        const raw = await fs.readFile(file, 'utf8');
+        const syncRecord = JSON.parse(raw);
 
-        res.writeHead(200, {
-          'Content-Type': 'application/json'
-        });
+        if (
+          !syncRecord ||
+          typeof syncRecord.revision !== 'number' ||
+          typeof syncRecord.updatedAt !== 'number' ||
+          !syncRecord.encrypted
+        ) {
+          throw new Error('Invalid stored board');
+        }
 
-        res.end(board);
+        sendJson(res, 200, syncRecord);
 
       } catch (error) {
         if (error.code === 'ENOENT') {
