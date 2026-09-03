@@ -1,6 +1,27 @@
 'use strict';
 
-const SERVER_URL = 'http://localhost:3000';
+const SERVER_URL =
+  process.env.GAZBOARD_SYNC_SERVER || 'http://localhost:3000';
+
+let DEVICE_TOKEN = null;
+
+function setDeviceToken(token) {
+  if (!token || typeof token !== 'string') {
+    throw new Error('Invalid device token');
+  }
+
+  DEVICE_TOKEN = token;
+}
+
+function getAuthHeaders() {
+  if (!DEVICE_TOKEN) {
+    throw new Error('Device is not paired');
+  }
+
+  return {
+    Authorization: `Bearer ${DEVICE_TOKEN}`
+  };
+}
 
 async function uploadBoard(id, encryptedBoard) {
   const response = await fetch(
@@ -8,7 +29,8 @@ async function uploadBoard(id, encryptedBoard) {
     {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
       },
       body: encryptedBoard
     }
@@ -25,7 +47,10 @@ async function uploadBoard(id, encryptedBoard) {
 
 async function getBoardInfo(id) {
   const response = await fetch(
-    `${SERVER_URL}/boards/${encodeURIComponent(id)}/info`
+    `${SERVER_URL}/boards/${encodeURIComponent(id)}/info`,
+    {
+      headers: getAuthHeaders()
+    }
   );
 
   if (!response.ok) {
@@ -54,7 +79,10 @@ async function getBoardInfo(id) {
 
 async function downloadBoard(id) {
   const response = await fetch(
-    `${SERVER_URL}/boards/${encodeURIComponent(id)}`
+    `${SERVER_URL}/boards/${encodeURIComponent(id)}`,
+    {
+      headers: getAuthHeaders()
+    }
   );
 
   if (!response.ok) {
@@ -80,6 +108,7 @@ async function downloadBoard(id) {
 }
 
 module.exports = {
+  setDeviceToken,
   uploadBoard,
   downloadBoard,
   getBoardInfo

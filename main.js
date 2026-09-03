@@ -25,6 +25,7 @@ const {
 } = require('./board-crypto');
 
 const {
+  setDeviceToken,
   uploadBoard,
   downloadBoard,
   getBoardInfo
@@ -1091,6 +1092,11 @@ function ipc() {
     } catch (e) {
       return { ok: false, error: e.message };
     }
+  });
+
+  ipcMain.handle('sync:set-device-token', (_e, token) => {
+    setDeviceToken(token);
+    return { ok: true };
   });
 }
 

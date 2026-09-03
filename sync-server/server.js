@@ -3,12 +3,43 @@
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const PORT = 3000;
 const DATA_DIR = path.join(__dirname, 'data');
 
+const PAIRING_FILE = path.join(DATA_DIR, 'pairing.json');
+
+const DEVICES_FILE = path.join(DATA_DIR, 'devices.json');
+
 async function ensureDataDir() {
   await fs.mkdir(DATA_DIR, { recursive: true });
+}
+
+function generatePairingCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+  let code = '';
+
+  for (let i = 0; i < 8; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+
+  return `${code.slice(0, 4)}-${code.slice(4)}`;
+}
+
+function generateDeviceToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+function getDeviceToken(req) {
+  const header = req.headers.authorization;
+
+  if (!header || !header.startsWith('Bearer ')) {
+    return null;
+  }
+
+  return header.substring('Bearer '.length).trim();
 }
 
 function boardFile(id) {
@@ -40,11 +71,183 @@ async function readRequestBody(req) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    const publicRoute =
+      req.method === 'GET' && req.url === '/health';
+
+    const pairingRoute =
+      req.url === '/pairing/create' ||
+      req.url === '/pairing/redeem';
+
+    if (!publicRoute && !pairingRoute) {
+      const token = getDeviceToken(req);
+
+      if (!token) {
+        sendJson(res, 401, {
+          error: 'Authentication required'
+        });
+
+        return;
+      }
+
+      let devices = [];
+
+      try {
+        const raw = await fs.readFile(DEVICES_FILE, 'utf8');
+        devices = JSON.parse(raw);
+
+        if (!Array.isArray(devices)) {
+          devices = [];
+        }
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          sendJson(res, 401, {
+            error: 'Authentication required'
+          });
+
+          return;
+        }
+
+        throw error;
+      }
+
+      const device = devices.find(
+        (item) => item && item.token === token
+      );
+
+      if (!device) {
+        sendJson(res, 401, {
+          error: 'Invalid device token'
+        });
+
+        return;
+      }
+    }
+
     // Health check
     if (req.method === 'GET' && req.url === '/health') {
       sendJson(res, 200, {
         ok: true,
         service: 'GazBoard Sync'
+      });
+
+      return;
+    }
+
+    // Create a one-time pairing code
+    if (
+      req.method === 'POST' &&
+      req.url === '/pairing/create'
+    ) {
+      const code = generatePairingCode();
+
+      const pairing = {
+        code,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 5 * 60 * 1000
+      };
+
+      await fs.writeFile(
+        PAIRING_FILE,
+        JSON.stringify(pairing),
+        'utf8'
+      );
+
+      sendJson(res, 200, {
+        ok: true,
+        code,
+        expiresAt: pairing.expiresAt
+      });
+
+      return;
+    }
+
+    // Redeem a one-time pairing code
+    if (
+      req.method === 'POST' &&
+      req.url === '/pairing/redeem'
+    ) {
+      const body = await readRequestBody(req);
+
+      let request;
+
+      try {
+        request = JSON.parse(body);
+      } catch {
+        throw new Error('Invalid JSON');
+      }
+
+      if (!request || typeof request.code !== 'string') {
+        throw new Error('Pairing code is required');
+      }
+
+      let pairing;
+
+      try {
+        const raw = await fs.readFile(PAIRING_FILE, 'utf8');
+        pairing = JSON.parse(raw);
+      } catch (error) {
+        if (error.code === 'ENOENT') {
+          sendJson(res, 400, {
+            error: 'No pairing code available'
+          });
+
+          return;
+        }
+
+        throw error;
+      }
+
+      if (
+        !pairing ||
+        pairing.code !== request.code ||
+        typeof pairing.expiresAt !== 'number' ||
+        Date.now() > pairing.expiresAt
+      ) {
+        sendJson(res, 400, {
+          error: 'Invalid or expired pairing code'
+        });
+
+        return;
+      }
+
+      const deviceToken = generateDeviceToken();
+
+      let devices = [];
+
+      try {
+        const raw = await fs.readFile(DEVICES_FILE, 'utf8');
+        devices = JSON.parse(raw);
+
+        if (!Array.isArray(devices)) {
+          devices = [];
+        }
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      const deviceId = crypto.randomUUID();
+
+      devices.push({
+        deviceId,
+        token: deviceToken,
+        createdAt: Date.now()
+      });
+
+      await fs.writeFile(
+        DEVICES_FILE,
+        JSON.stringify(devices, null, 2),
+        'utf8'
+      );
+
+      // Make the pairing code one-time-use.
+      await fs.unlink(PAIRING_FILE).catch(() => {});
+
+      sendJson(res, 200, {
+        ok: true,
+        deviceId,
+        deviceToken
       });
 
       return;
@@ -228,7 +431,7 @@ const server = http.createServer(async (req, res) => {
 
 ensureDataDir()
   .then(() => {
-    server.listen(PORT, () => {
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(
         `GazBoard Sync server running on http://localhost:${PORT}`
       );

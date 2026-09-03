@@ -45,7 +45,8 @@ contextBridge.exposeInMainWorld('board', {
     check: (id) => ipcRenderer.invoke('sync:check', id),
     pullIfNewer: (id) => ipcRenderer.invoke('sync:pull-if-newer', id),
     upload: (id) => ipcRenderer.invoke('sync:upload', id),
-    download: (id) => ipcRenderer.invoke('sync:download', id)
+    download: (id) => ipcRenderer.invoke('sync:download', id),
+    setDeviceToken: (token) => ipcRenderer.invoke('sync:set-device-token', token),
   },
 
   importToPdf: (filePath) => ipcRenderer.invoke('import:toPdf', filePath),
