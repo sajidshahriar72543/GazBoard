@@ -51,11 +51,13 @@ function boardFile(id) {
   return path.join(DATA_DIR, `${id}.json`);
 }
 
-function sendJson(res, statusCode, data) {
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json'
+function sendJson(res, status, data) {
+  res.writeHead(status, {
+    'Content-Type': 'application/json',
+    'Access-Control-Allow-Origin': 'app://board',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization'
   });
-
   res.end(JSON.stringify(data));
 }
 
@@ -70,6 +72,15 @@ async function readRequestBody(req) {
 }
 
 const server = http.createServer(async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': 'app://board',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+    });
+    res.end();
+    return;
+  }
   try {
     const publicRoute =
       req.method === 'GET' && req.url === '/health';

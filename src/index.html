@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self' app: data: blob:; script-src 'self' app:; style-src 'self' app: 'unsafe-inline'; img-src 'self' app: data: blob:; font-src 'self' app: data:; worker-src 'self' app: blob:;">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self' app: data: blob:; connect-src 'self' app: http://localhost:3000 http://192.168.0.133:3000; script-src 'self' app:; style-src 'self' app: 'unsafe-inline'; img-src 'self' app: data: blob:; font-src 'self' app: data:; worker-src 'self' app: blob:;">
 <title>GazBoard</title>
 <link rel="stylesheet" href="./css/app.css">
 <script src="./js/errors.js"></script>

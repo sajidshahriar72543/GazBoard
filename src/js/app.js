@@ -988,6 +988,31 @@ class App {
   hideMenus() { closePopover(); }
 
   /* ---------------- notifications & dialogs ---------------- */
+  async pairDevice() {
+    try {
+      const response = await fetch('http://localhost:3000/pairing/create', {
+        method: 'POST'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Could not create pairing code');
+      }
+
+      await this.choose(
+        'Pair another device',
+        `Open GazBoard on your other device and enter this pairing code:\n\n${result.code}\n\nThe code expires in 5 minutes.`,
+        [
+          { id: 'done', label: 'Done', primary: true }
+        ],
+        { cancel: false }
+      );
+    } catch (e) {
+      console.error('Pairing failed:', e);
+      this.toast('Could not create pairing code', 'close');
+    }
+  }
   toast(message, iconName = 'check', ms = 2600) {
     const host = document.getElementById('toasts');
     const el = h('div', { class: 'toast' }, h('span', { html: icon(iconName, 16), style: 'display:flex' }), h('span', {}, message));

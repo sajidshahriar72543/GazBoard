@@ -197,6 +197,17 @@ export function createPanels(app) {
 
       return h('div', {},
         h('div', { class: 'section' },
+          h('h5', {}, 'Sync'),
+          h('button', {
+            class: 'btn primary',
+            style: 'width:100%;margin-bottom:8px',
+            onclick: () => app.pairDevice()
+          }, 'Pair a device'),
+          h('p', {
+            style: 'font-size:12px;color:var(--text-2);margin:0;line-height:1.6'
+          }, 'Connect another device to your GazBoard boards.')
+        ),
+        h('div', { class: 'section' },
           h('h5', {}, 'Inking'),
           row('Straighten shapes I draw', mkToggle(() => s.inkToShape, (v) => (s.inkToShape = v)),
             'Off by default: ink is kept exactly as you drew it. Switch on and a hand-drawn circle, box or arrow snaps to a clean shape when you lift the pen — one undo returns your ink.'),
