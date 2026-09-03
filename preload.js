@@ -48,6 +48,10 @@ contextBridge.exposeInMainWorld('board', {
     download: (id) => ipcRenderer.invoke('sync:download', id),
     setDeviceToken: (token) => ipcRenderer.invoke('sync:set-device-token', token),
     loadDeviceToken: () => ipcRenderer.invoke('sync:load-device-token'),
+    createPairing: () =>
+      ipcRenderer.invoke('sync:create-pairing'),
+    redeemPairing: (code) =>
+      ipcRenderer.invoke('sync:redeem-pairing', code),
   },
 
   importToPdf: (filePath) => ipcRenderer.invoke('import:toPdf', filePath),

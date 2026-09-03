@@ -28,7 +28,9 @@ const {
   setDeviceToken,
   uploadBoard,
   downloadBoard,
-  getBoardInfo
+  getBoardInfo,
+  createPairingCode,
+  redeemPairingCode
 } = require('./sync-client');
 
 const SRC = path.join(__dirname, 'src');
@@ -1131,6 +1133,22 @@ function ipc() {
     } catch (e) {
       return { ok: false, error: e.message };
     }
+  });
+
+  ipcMain.handle('sync:create-pairing', async () => {
+    return await createPairingCode();
+  });
+
+  ipcMain.handle('sync:redeem-pairing', async (_e, code) => {
+    const result = await redeemPairingCode(code);
+
+    setDeviceToken(result.deviceToken);
+    await saveSyncToken(result.deviceToken);
+
+    return {
+      ok: true,
+      deviceId: result.deviceId
+    };
   });
 
   ipcMain.handle('sync:set-device-token', async (_e, token) => {

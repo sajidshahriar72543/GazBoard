@@ -990,15 +990,7 @@ class App {
   /* ---------------- notifications & dialogs ---------------- */
   async pairDevice() {
     try {
-      const response = await fetch('http://localhost:3000/pairing/create', {
-        method: 'POST'
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Could not create pairing code');
-      }
+      const result = await window.board.sync.createPairing();
 
       await this.choose(
         'Pair another device',
@@ -1011,6 +1003,37 @@ class App {
     } catch (e) {
       console.error('Pairing failed:', e);
       this.toast('Could not create pairing code', 'close');
+    }
+  }
+  async redeemPairingCode() {
+    const code = await this.input(
+      'Enter pairing code',
+      'Enter the pairing code shown on your other GazBoard device.',
+      {
+        placeholder: 'XXXX-XXXX',
+        submitLabel: 'Pair device'
+      }
+    );
+
+    if (!code) return;
+
+    try {
+      const result =
+        await window.board.sync.redeemPairing(code);
+
+      this.toast('Device paired successfully');
+
+      console.log(
+        '[sync] Device paired:',
+        result.deviceId
+      );
+    } catch (e) {
+      console.error('Pairing failed:', e);
+
+      this.toast(
+        e.message || 'Could not pair device',
+        'close'
+      );
     }
   }
   toast(message, iconName = 'check', ms = 2600) {
@@ -1380,6 +1403,89 @@ class App {
       }
       card.appendChild(row);
       overlay.classList.add('show');
+    });
+  }
+
+  input(title, text, {
+    placeholder = '',
+    defaultValue = '',
+    submitLabel = 'Submit'
+  } = {}) {
+    return new Promise((resolve) => {
+      const overlay = document.getElementById('overlay');
+      const card = document.getElementById('overlayCard');
+
+      card.innerHTML = '';
+
+      let finished = false;
+
+      const done = (value) => {
+        if (finished) return;
+
+        finished = true;
+        overlay.classList.remove('show');
+        document.removeEventListener('keydown', onKey, true);
+        resolve(value);
+      };
+
+      const onKey = (e) => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          e.stopPropagation();
+          done(null);
+        }
+
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          e.stopPropagation();
+          done(input.value.trim());
+        }
+      };
+
+      document.addEventListener('keydown', onKey, true);
+
+      card.appendChild(h('h3', {}, title));
+      card.appendChild(h('p', {}, text));
+
+      const input = h('input', {
+        type: 'text',
+        class: 'input',
+        placeholder,
+        value: defaultValue,
+        style: 'width:100%;margin:12px 0;box-sizing:border-box;'
+      });
+
+      card.appendChild(input);
+
+      const row = h(
+        'div',
+        {
+          class: 'actions',
+          style: 'flex-wrap:wrap;gap:8px'
+        },
+        h(
+          'button',
+          {
+            class: 'btn',
+            onclick: () => done(null)
+          },
+          'Cancel'
+        ),
+        h(
+          'button',
+          {
+            class: 'btn primary',
+            onclick: () => done(input.value.trim())
+          },
+          submitLabel
+        )
+      );
+
+      card.appendChild(row);
+      overlay.classList.add('show');
+
+      input.focus();
+      input.select();
     });
   }
 

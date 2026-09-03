@@ -107,9 +107,55 @@ async function downloadBoard(id) {
   return record;
 }
 
+async function createPairingCode() {
+  const response = await fetch(
+    `${SERVER_URL}/pairing/create`,
+    {
+      method: 'POST'
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result.error || 'Could not create pairing code'
+    );
+  }
+
+  return result;
+}
+
+async function redeemPairingCode(code) {
+  const response = await fetch(
+    `${SERVER_URL}/pairing/redeem`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        code: code.trim().toUpperCase()
+      })
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(
+      result.error || 'Invalid pairing code'
+    );
+  }
+
+  return result;
+}
+
 module.exports = {
   setDeviceToken,
   uploadBoard,
   downloadBoard,
-  getBoardInfo
+  getBoardInfo,
+  createPairingCode,
+  redeemPairingCode
 };

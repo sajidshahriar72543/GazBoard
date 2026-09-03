@@ -203,8 +203,13 @@ export function createPanels(app) {
             style: 'width:100%;margin-bottom:8px',
             onclick: () => app.pairDevice()
           }, 'Pair a device'),
+          h('button', {
+            class: 'btn',
+            style: 'width:100%',
+            onclick: () => app.redeemPairingCode()
+          }, 'Enter pairing code'),
           h('p', {
-            style: 'font-size:12px;color:var(--text-2);margin:0;line-height:1.6'
+            style: 'font-size:12px;color:var(--text-2);margin:8px 0 0;line-height:1.6'
           }, 'Connect another device to your GazBoard boards.')
         ),
         h('div', { class: 'section' },
