@@ -190,26 +190,42 @@ class App {
    */
   async persist({ force = false } = {}) {
     if (!force && this.unsavedNew && !this.store.objects.length) return;
+
     this.store.doc.camera = this.surface.cam.toJSON();
-    // boards.save writes the file and records the "last open" pointer in one go,
-    // both through the main process, so both are on disk immediately
+
     /*
-     * The board is serialised HERE and sent as text.
-     *
-     * Sending the object instead meant the structured clone that crosses to the
-     * main process had to walk every point of every stroke and copy every
-     * embedded picture - on a board with a few imported pages that was ~130ms
-     * of blocking work on top of ~50ms to stringify it, all of it on the thread
-     * that handles the pen. Strokes went missing in that window. A string is
-     * copied wholesale, and the main process no longer has to re-serialise what
-     * it is only going to write out.
-     */
+    * The board is serialised HERE and sent as text.
+    *
+    * Sending the object instead meant the structured clone that crosses to the
+    * main process had to walk every point of every stroke and copy every
+    * embedded picture. A string is copied wholesale, and the main process no
+    * longer has to re-serialise what it is only going to write out.
+    */
     const doc = await this.externaliseAssets(this.store.toJSON());
-    await window.board.boards.save({ id: doc.id, json: JSON.stringify(doc) });
+
+    // 1. Save the encrypted board locally first.
+    await window.board.boards.save({
+      id: doc.id,
+      json: JSON.stringify(doc)
+    });
+
+    // 2. Upload the same encrypted local board to the sync server.
+    try {
+      const sync = await window.board.sync.upload(doc.id);
+      console.log('[sync] Board uploaded:', sync);
+    } catch (e) {
+      // Local save already succeeded, so sync failure must never lose the board.
+      console.warn('[sync] Upload failed:', e);
+    }
+
     this.unsavedNew = false;
     this._unsaved = false;
     this._lastSaveAt = performance.now();
-    try { localStorage.setItem('gazboard.lastBoard', this.store.doc.id); } catch {}
+
+    try {
+      localStorage.setItem('gazboard.lastBoard', this.store.doc.id);
+    } catch {}
+
     const b = document.getElementById('savedBadge');
     b.textContent = 'Saved';
   }
