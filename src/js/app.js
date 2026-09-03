@@ -82,6 +82,8 @@ class App {
       console.warn('Vault startup failed:', e);
     }
 
+    await window.board.sync.loadDeviceToken();
+
     await this.restoreLastBoard();
   }
 

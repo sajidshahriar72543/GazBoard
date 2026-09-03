@@ -82,6 +82,8 @@ const vaultKeyFile = () => path.join(app.getPath('userData'), 'vault-key.dat');
 const dataDir = () => path.join(app.getPath('userData'), 'boards');
 const syncMetaFile = (id) =>
   path.join(dataDir(), id + '.sync.json');
+const syncTokenFile = () =>
+  path.join(app.getPath('userData'), 'sync-device-token.dat');
 async function ensureDataDir() { await fsp.mkdir(dataDir(), { recursive: true }); }
 async function readSyncMeta(id) {
   try {
@@ -136,6 +138,43 @@ async function loadVaultKey() {
     );
 
     return null;
+  }
+}
+
+async function saveSyncToken(token) {
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) {
+    throw new Error('Secure storage is not available');
+  }
+
+  const encrypted = await safeStorage.encryptString(token);
+
+  await fsp.writeFile(
+    syncTokenFile(),
+    Buffer.from(encrypted)
+  );
+}
+
+async function loadSyncToken() {
+  if (!(await safeStorage.isAsyncEncryptionAvailable())) {
+    throw new Error('Secure storage is not available');
+  }
+
+  try {
+    const encrypted = await fsp.readFile(syncTokenFile());
+
+    const decrypted = await safeStorage.decryptStringAsync(encrypted);
+
+    if (!decrypted || typeof decrypted.result !== 'string') {
+      return null;
+    }
+
+    return decrypted.result;
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+
+    throw error;
   }
 }
 
@@ -1094,9 +1133,34 @@ function ipc() {
     }
   });
 
-  ipcMain.handle('sync:set-device-token', (_e, token) => {
-    setDeviceToken(token);
-    return { ok: true };
+  ipcMain.handle('sync:set-device-token', async (_e, token) => {
+  setDeviceToken(token);
+  await saveSyncToken(token);
+
+  return { ok: true };
+});
+
+  ipcMain.handle('sync:load-device-token', async () => {
+    try {
+      const token = await loadSyncToken();
+
+      if (!token) {
+        return {
+          available: false
+        };
+      }
+
+      setDeviceToken(token);
+
+      return {
+        available: true
+      };
+    } catch (error) {
+      return {
+        available: false,
+        error: error.message
+      };
+    }
   });
 }
 
